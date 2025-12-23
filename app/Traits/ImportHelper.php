@@ -62,14 +62,17 @@ trait ImportHelper
         $this->benchmarkStartTime = microtime(true);
         $this->benchmarkStartMemory = memory_get_usage();
         DB::enableQueryLog();
-        $this->startQueries = DB::select("SHOW SESSION STATUS LIKE 'Questions'")[0]->Value;
+        // PostgreSQL doesn't have a direct equivalent to MySQL's Questions counter
+        // We'll use query log count as approximation
+        $this->startQueries = count(DB::getQueryLog());
     }
 
     protected function endBenchmark(string $table = 'customers'): void
     {
         $executionTime = microtime(true) - $this->benchmarkStartTime;
         $memoryUsage = round((memory_get_usage() - $this->benchmarkStartMemory) / 1024 / 1024, 2);
-        $queriesCount = DB::select("SHOW SESSION STATUS LIKE 'Questions'")[0]->Value - $this->startQueries - 1; // Subtract the Questions query itself
+        // Use query log count instead of MySQL's Questions status
+        $queriesCount = count(DB::getQueryLog()) - $this->startQueries - 1; // Subtract the count query itself
 
         // Get row count after we've stopped tracking queries
         $rowDiff = DB::table($table)->count() - $this->startRowCount;
@@ -103,6 +106,7 @@ trait ImportHelper
         collect(file($filePath))
             ->skip(1)
             ->map(fn ($line) => str_getcsv($line))
+            ->filter(fn ($row) => count($row) >= 7) // Filter out malformed rows
             ->map(fn ($row) => [
                 'custom_id' => $row[0],
                 'name' => $row[1],
@@ -132,6 +136,7 @@ trait ImportHelper
         $allCustomers = collect(file($filePath))
             ->skip(1)
             ->map(fn ($line) => str_getcsv($line))
+            ->filter(fn ($row) => count($row) >= 7) // Filter out malformed rows
             ->map(fn ($row) => [
                 'custom_id' => $row[0],
                 'name' => $row[1],
@@ -162,6 +167,7 @@ trait ImportHelper
         collect(file($filePath))
             ->skip(1)
             ->map(fn ($line) => str_getcsv($line))
+            ->filter(fn ($row) => count($row) >= 7) // Filter out malformed rows
             ->map(fn ($row) => [
                 'custom_id' => $row[0],
                 'name' => $row[1],
@@ -196,6 +202,7 @@ trait ImportHelper
             }
             fclose($handle);
         })
+            ->filter(fn ($row) => count($row) >= 7) // Filter out malformed rows
             ->each(function ($row) use ($now) {
                 // Directly insert each row
                 Customer::insert([
@@ -232,6 +239,7 @@ trait ImportHelper
             }
             fclose($handle);
         })
+            ->filter(fn ($row) => count($row) >= 7) // Filter out malformed rows
             ->map(fn ($row) => [
                 'custom_id' => $row[0],
                 'name' => $row[1],
@@ -266,7 +274,7 @@ trait ImportHelper
             }
             fclose($handle);
         })
-            ->filter(fn ($row) => filter_var($row[2], FILTER_VALIDATE_EMAIL))  // Nice filtering syntax
+            ->filter(fn ($row) => count($row) >= 7 && filter_var($row[2], FILTER_VALIDATE_EMAIL)) // Nice filtering syntax
             ->chunk(1000)
             ->each(function ($chunk) use ($pdo, $now) {
                 // Build SQL for this chunk
@@ -300,6 +308,11 @@ trait ImportHelper
         $now = now()->format('Y-m-d H:i:s');
 
         while (($row = fgetcsv($handle)) !== false) {
+            // Skip malformed rows
+            if (count($row) < 7) {
+                continue;
+            }
+
             $data[] = [
                 'custom_id' => $row[0],
                 'name' => $row[1],
@@ -339,6 +352,11 @@ trait ImportHelper
         $pdo = DB::connection()->getPdo();
 
         while (($row = fgetcsv($handle)) !== false) {
+            // Skip malformed rows
+            if (count($row) < 7) {
+                continue;
+            }
+
             $data[] = [
                 'custom_id' => $row[0],
                 'name' => $row[1],
@@ -407,6 +425,11 @@ trait ImportHelper
         ');
 
             while (($row = fgetcsv($handle)) !== false) {
+                // Skip malformed rows
+                if (count($row) < 7) {
+                    continue;
+                }
+
                 $stmt->execute([
                     $row[0],
                     $row[1],
@@ -443,6 +466,11 @@ trait ImportHelper
             $stmt = $this->prepareChunkedStatement($chunkSize);
 
             while (($row = fgetcsv($handle)) !== false) {
+                // Skip malformed rows
+                if (count($row) < 7) {
+                    continue;
+                }
+
                 $chunks = array_merge($chunks, [
                     $row[0], $row[1], $row[2], $row[3], $row[4],
                     $row[5], $row[6], $now, $now,
@@ -493,6 +521,12 @@ trait ImportHelper
                     }
 
                     $row = str_getcsv($line);
+
+                    // Skip malformed rows
+                    if (count($row) < 7) {
+                        continue;
+                    }
+
                     $customers[] = [
                         'custom_id' => $row[0],
                         'name' => $row[1],
@@ -527,7 +561,8 @@ trait ImportHelper
 
     private function import12LoadDataInfile(string $filePath): void
     {
-        // MySQL specific, fastest approach
+        // PostgreSQL COPY command (equivalent to MySQL LOAD DATA INFILE)
+        // Fastest approach for bulk inserts
         // 100 10ms / 0MB
         // 1K 29ms / 0MB
         // 10K 115ms / 0MB
@@ -535,31 +570,10 @@ trait ImportHelper
         // 1M 5s / 0MB
         // 2M 11s / 0MB
         $pdo = DB::connection()->getPdo();
-        $pdo->setAttribute(PDO::MYSQL_ATTR_LOCAL_INFILE, true);
 
-        $filepath = str_replace('\\', '/', $filePath);
-
-        $query = <<<SQL
-    LOAD DATA LOCAL INFILE '$filepath'
-    INTO TABLE customers
-    FIELDS TERMINATED BY ','
-    ENCLOSED BY '"'
-    LINES TERMINATED BY '\n'
-    IGNORE 1 LINES
-    (@col1, @col2, @col3, @col4, @col5, @col6, @col7)
-    SET
-        custom_id = @col1,
-        name = @col2,
-        email = @col3,
-        company = @col4,
-        city = @col5,
-        country = @col6,
-        birthday = @col7,
-        created_at = NOW(),
-        updated_at = NOW()
-    SQL;
-
-        $pdo->exec($query);
+        // Use COPY to bulk insert directly from the CSV file
+        // PostgreSQL will use DEFAULT CURRENT_TIMESTAMP for created_at and updated_at
+        $pdo->exec("COPY customers (custom_id, name, email, company, city, country, birthday) FROM '" . $filePath . "' WITH (FORMAT csv, HEADER true)");
     }
 
     private function prepareChunkedStatement($chunkSize): PDOStatement
