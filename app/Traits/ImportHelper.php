@@ -96,6 +96,9 @@ trait ImportHelper
 
     private function import01BasicOneByOne(string $filePath): void
     {
+        // DB::disableQueryLog();
+        // DB::connection()->unsetEventDispatcher();
+
         // Most basic approach - one query per record
         // 100 130ms / 0.35MB
         // 1K 549ms / 2MB
@@ -123,6 +126,9 @@ trait ImportHelper
 
     private function import02CollectAndInsert(string $filePath): void
     {
+        // DB::disableQueryLog();
+        // DB::connection()->unsetEventDispatcher();
+
         // Collect all and single insert
         // Shows prepared statement limit with large datasets
         // 100 16ms / 0.05MB
@@ -154,6 +160,9 @@ trait ImportHelper
 
     private function import03CollectAndChunk(string $filePath): void
     {
+        // DB::disableQueryLog();
+        // DB::connection()->unsetEventDispatcher();
+
         // Collect all but insert in chunks
         // Still has memory issues with large files
         // 100 15ms / 0.05MB
@@ -185,6 +194,9 @@ trait ImportHelper
 
     private function import04LazyCollection(string $filePath): void
     {
+        // DB::disableQueryLog();
+        // DB::connection()->unsetEventDispatcher();
+
         // 100 66ms / 0.39MB
         // 1K 37ms / 1.47MB
         // 10K 3s / 12MB
@@ -221,6 +233,9 @@ trait ImportHelper
 
     private function import05LazyCollectionWithChunking(string $filePath): void
     {
+        // DB::disableQueryLog();
+        // DB::connection()->unsetEventDispatcher();
+
         // Lazy loading with chunking
         // 100 16ms / 0.28MB
         // 1K 61ms / 0.8MB
@@ -257,6 +272,9 @@ trait ImportHelper
 
     private function import06LazyCollectionWithChunkingAndPdo(string $filePath): void
     {
+        // DB::disableQueryLog();
+        // DB::connection()->unsetEventDispatcher();
+
         // 100 10ms / 0.23MB
         // 1K 51ms / 0.23MB
         // 10K 234ms / 0.23MB
@@ -294,6 +312,9 @@ trait ImportHelper
 
     private function import07ManualStreaming(string $filePath): void
     {
+        // DB::disableQueryLog();
+        // DB::connection()->unsetEventDispatcher();
+
         // Read and insert in chunks
         // Better memory management
         // 100 13ms / 0.05MB

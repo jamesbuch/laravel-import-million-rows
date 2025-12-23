@@ -10,9 +10,9 @@ use function Laravel\Prompts\select;
 class CustomersImportCommand extends Command
 {
     // Rules:
-    // 1. MySQL
-    // 2. 256MB Memory Limit
-    // 3. No Queue
+    // 1. PostgreSQL Database
+    // 2. 256MB Memory Limit?
+    // 3. No Queue?
     use ImportHelper;
 
     protected $signature = 'import:customers';
